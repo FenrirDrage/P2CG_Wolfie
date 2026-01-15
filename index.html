@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="pt-PT">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Lobo Robótico — Three.js</title>
+    <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+    <header>
+        <h1>Lobo Robótico — Three.js (Projeto)</h1>
+        <div class="controls">
+            <span>Interações:</span>
+            <ul>
+                <li>Click no lobo → abre mandíbula + som</li>
+                <li>Pressionar <kbd>R</kbd> → alterna Run Mode</li>
+                <li>Mouse → orbitar (OrbitControls)</li>
+            </ul>
+        </div>
+    </header>
+
+    <main id="canvas-container"></main>
+
+    <footer>
+        <small>Feito com geometrias primitivas — Box, Cylinder, Sphere.</small>
+    </footer>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module" src="script.js"></script>
+</body>
+</html>
