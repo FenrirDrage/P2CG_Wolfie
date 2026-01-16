@@ -1,9 +1,14 @@
-// WOLF MODEL v5 — refined low-poly lupino (head narrow, long snout, ear tilt, leg bends)
-// Direct CDN imports
-import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js';
-import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/controls/OrbitControls.js';
+//old import
+//import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js';
+//import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/controls/OrbitControls.js';
+import * as THREE from 'three';
+// ORBIT CONTROLS utility (enable moving camera with mouse)
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 console.log("Wolf script v5 loaded");
+
+let audioCtx;
+let wolfBuffer = null;
 
 // ---------- Scene / Camera / Renderer ----------
 const container = document.getElementById('canvas-container');
@@ -37,23 +42,34 @@ dirLight.shadow.camera.bottom = -10;
 dirLight.shadow.mapSize.set(2048, 2048);
 scene.add(dirLight);
 
-const ambient = new THREE.AmbientLight(0xffffff, 0.55);
+const ambient = new THREE.AmbientLight(0xffffff, 1);
 scene.add(ambient);
 
-const hemi = new THREE.HemisphereLight(0x6b7f8a, 0x071018, 0.12);
+const hemi = new THREE.HemisphereLight(0x6b7f8a, 0x071018, 1);
 scene.add(hemi);
 
-const fill = new THREE.PointLight(0xffffff, 0.22);
+const fill = new THREE.PointLight(0xffffff, 1);
 fill.position.set(-5, 4, -4);
 scene.add(fill);
 
 // ---------- Ground ----------
 const groundMat = new THREE.MeshStandardMaterial({ color: 0x121416, metalness: 0.06, roughness: 0.74 });
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), groundMat);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), groundMat);
 ground.rotation.x = -Math.PI / 2;
 ground.position.y = 0;
 ground.receiveShadow = true;
 scene.add(ground);
+
+const GROUND_SIZE_X = 100;
+const GROUND_SIZE_Z = 100;
+
+const GROUND_MIN_X = -GROUND_SIZE_X / 2;
+const GROUND_MAX_X =  GROUND_SIZE_X / 2;
+const GROUND_MIN_Z = -GROUND_SIZE_Z / 2;
+const GROUND_MAX_Z =  GROUND_SIZE_Z / 2;
+const EDGE_MARGIN = 1.4;
+
+const groundPlane = ground;
 
 const shadowMat = new THREE.ShadowMaterial({ opacity: 0.35 });
 const shadowPlane = new THREE.Mesh(new THREE.PlaneGeometry(8.5, 6), shadowMat);
@@ -89,22 +105,24 @@ metalMat.needsUpdate = darkMat.needsUpdate = accentMat.needsUpdate = true;
 const wolf = new THREE.Group();
 wolf.name = 'robot_wolf';
 scene.add(wolf);
-wolf.position.y = 1.25; // a bit lower than v4 but lifted off ground
+wolf.position.y = 1.25; // raise above ground
 
 // ---------- Torso: narrow, tapered ----------
 const torso = new THREE.Group();
 wolf.add(torso);
 
 // chest (front) - narrower in Z
-const chestGeom = new THREE.BoxGeometry(1.22, 0.66, 0.48);
+const chestGeom = new THREE.CylinderGeometry(0.38, 0.40, 1, 8);
 const chest = new THREE.Mesh(chestGeom, metalMat);
+chest.rotateOnAxis(new THREE.Vector3(0, 0, 1), Math.PI / -2);
 chest.position.set(0.5, 0, 0);
 chest.castShadow = true;
 torso.add(chest);
 
 // rear (tapered): use a box rotated slightly and scaled to look narrower
-const rearGeom = new THREE.BoxGeometry(1.05, 0.56, 0.42);
+const rearGeom = new THREE.CylinderGeometry(0.30, 0.38, 1, 8);
 const rear = new THREE.Mesh(rearGeom, metalMat);
+rear.rotateOnAxis(new THREE.Vector3(0, 0, 1), Math.PI / 2);
 rear.position.set(-0.6, -0.03, 0);
 rear.rotation.y = 0.02; // tiny twist to break perfect boxy look
 rear.castShadow = true;
@@ -127,7 +145,7 @@ headMain.castShadow = true;
 head.add(headMain);
 
 // Snout — triangular prism (thinner and longer)
-const snoutLen = 0.5;
+const snoutLen = 0.9;
 const snout = new THREE.Mesh(
   new THREE.CylinderGeometry(0.12, 0.08, snoutLen, 3, 1, false),
   darkMat
@@ -135,30 +153,44 @@ const snout = new THREE.Mesh(
 snout.rotation.y=0;
 snout.rotation.z = Math.PI / 2;
 snout.rotation.x = Math.PI / 2 - 0.12; //inclinação -12
-snout.scale.set(1,0.75,0.75);
-snout.position.set(0.5, -0.05, 0);
+snout.scale.set(1,0.9,0.9);
+snout.position.set(0.4, -0.06, 0);
 snout.castShadow = true;
 head.add(snout);
 
 // Nose tip
 const nose = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.06, 0.10), darkMat);
-nose.position.set(0.4 + snoutLen / 2 + 0.05, -0.03, 0);
+nose.position.set(0.3 + snoutLen / 2 + 0.05, -0.03, 0);
 nose.castShadow = true;
 head.add(nose);
 
 // Ears: taller, slimmer, more tilted outward
-function makeEar(x, z, side) {
-  const ear = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.45, 3), metalMat);
-  ear.position.set(x, 0.28, z);
-  ear.scale.set(0.7, 1.6, 0.7);
-  ear.rotation.x = -0.75;
-  ear.rotation.z = side * 0.45; 
-  ear.rotation.y = side * 1.2;
+function makeEar(side) {
+  const ear = new THREE.Mesh(
+    new THREE.ConeGeometry(0.11, 0.38, 3),
+    metalMat
+  );
+
+  // POSIÇÃO — separação real
+  ear.position.set(
+    0.02,          // ligeiramente atrás do centro da cabeça
+    0.30,          // altura
+    side * 0.22    // separação esquerda / direita
+  );
+
+  // ESCALA low-poly
+  ear.scale.set(0.7, 1.4, 0.7);
+
+  // ROTAÇÕES
+  ear.rotation.x = side * 0.95;        // inclinar para trás
+  ear.rotation.y = side * 0.35;  // abrir em V
+  ear.rotation.z = 0.3;            // NÃO usar Z
+
   ear.castShadow = true;
   return ear;
 }
-const leftEar = makeEar(0.06 , 0.10, 1);
-const rightEar = makeEar(0.06, -0.20, -1);
+const leftEar  = makeEar( -1);
+const rightEar = makeEar(1);
 head.add(leftEar, rightEar);
 
 // Eyes: smaller rectangles/spheres closer to snout to emphasize muzzle
@@ -176,15 +208,20 @@ head.add(eyeLightL);
 const eyeLightR = new THREE.PointLight(0x00dfff, 1.0, 2.4, 2);
 eyeLightR.position.copy(rightEye.position);
 head.add(eyeLightR);
-/*
-// Jaw: slightly narrower and with angled lower face
+
+// ---------- Jaw (mandíbula) ----------
 const jaw = new THREE.Group();
-jaw.position.set(1.03, -0.12, 0);
+jaw.position.set(0.1, -0.02, 0);
 head.add(jaw);
-const jawBox = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.13, 0.34), darkMat);
-jawBox.castShadow = true;
-jaw.add(jawBox);
-*/
+
+const jawMesh = new THREE.Mesh(new THREE.ConeGeometry(0.1, 1, 4),darkMat);
+
+jawMesh.rotation.z = Math.PI / 2;
+jawMesh.position.set(0.10, -0.08, 0);
+jawMesh.castShadow = true;
+
+jaw.add(jawMesh);
+
 
 // ----------------- Tail (long thin, more curved) -----------------
 const tailGroup = new THREE.Group();
@@ -245,11 +282,16 @@ legs.forEach(l => {
 // ---------- Interaction & audio ----------
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
+const clickTarget = new THREE.Vector3();
+let hastarget = false;
+
+// Jaw
 let jawOpen = false;
 let runMode = false;
 let runMultiplier = 1.0;
 
-let audioCtx;
+// Beep sound
+/* 
 function playBeep() {
   try {
     audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
@@ -264,40 +306,95 @@ function playBeep() {
     g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.18);
     o.stop(audioCtx.currentTime + 0.19);
   } catch (e) {}
+}*/
+
+// Wolf howl sound
+function playWolfSound() {
+  if (!wolfBuffer || !audioCtx) return;
+
+  const source = audioCtx.createBufferSource();
+  const gain = audioCtx.createGain();
+
+  source.buffer = wolfBuffer;
+  source.connect(gain);
+  gain.connect(audioCtx.destination);
+
+  gain.gain.value = 0.4; // volume
+
+  source.start(0);
 }
 
 renderer.domElement.addEventListener('pointerdown', (ev) => {
+  loadWolfSound();
+  
   const rect = renderer.domElement.getBoundingClientRect();
+
   mouse.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
   mouse.y = - ((ev.clientY - rect.top) / rect.height) * 2 + 1;
+
   raycaster.setFromCamera(mouse, camera);
-  const hits = raycaster.intersectObject(wolf, true);
-  if (hits.length > 0) toggleJaw();
+
+   // Clique no LOBO → mandíbula
+  const hitsWolf = raycaster.intersectObject(wolf, true);
+  if (hitsWolf.length > 0) {
+    toggleJaw();
+    return; // importante: não processar o chão
+  }
+
+  const hits = raycaster.intersectObject(groundPlane,false);//(wolf, true);
+
+  //  Clique no CHÃO → mover alvo
+  if (hits.length > 0) 
+  {clickTarget.copy(hits[0].point); 
+      clickTarget.x = THREE.MathUtils.clamp(
+      clickTarget.x,
+      GROUND_MIN_X,
+      GROUND_MAX_X
+    );
+
+    clickTarget.z = THREE.MathUtils.clamp(
+      clickTarget.z,
+      GROUND_MIN_Z,
+      GROUND_MAX_Z
+    );
+    hastarget = true;}
+
+    //toggleJaw();
 });
 
+
+//let jawOpen = false;
 let jawAnim = null;
 function toggleJaw() {
+  if (jawAnim) return;
+
   jawOpen = !jawOpen;
-  playBeep();
-  const start = { r: jaw.rotation.x || 0 };
-  const end = { r: jawOpen ? -0.62 : 0 };
-  const dur = 220;
+  //playBeep();
+  playWolfSound();
+
+  const startRot = jaw.rotation.z;
+  const endRot = jawOpen ? -0.45 : 0;
+  const duration = 220;
   const t0 = performance.now();
-  jawAnim = (tn) => {
-    const p = Math.min(1, (tn - t0) / dur);
-    jaw.rotation.x = start.r + (end.r - start.r) * (1 - Math.pow(1 - p, 4));
+
+  jawAnim = (now) => {
+    const p = Math.min(1, (now - t0) / duration);
+    const eased = 1 - Math.pow(1 - p, 3);
+
+    jaw.rotation.z = startRot + (endRot - startRot) * eased;
+
     if (p < 1) requestAnimationFrame(jawAnim);
     else jawAnim = null;
   };
+
   requestAnimationFrame(jawAnim);
 
-  const prevL = leftEye.material.emissiveIntensity;
-  const prevR = rightEye.material.emissiveIntensity;
+  // flash nos olhos
   leftEye.material.emissiveIntensity = 3.2;
   rightEye.material.emissiveIntensity = 3.2;
   setTimeout(() => {
-    leftEye.material.emissiveIntensity = prevL;
-    rightEye.material.emissiveIntensity = prevR;
+    leftEye.material.emissiveIntensity = 1.0;
+    rightEye.material.emissiveIntensity = 1.0;
   }, 140);
 }
 
@@ -328,16 +425,61 @@ const clock = new THREE.Clock();
 let patrolX = 0;
 const baseSpeed = 0.88;
 
+async function loadWolfSound() {
+  if (wolfBuffer) return;
+
+  audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+
+  const response = await fetch(
+    'https://www.google.com/logos/fnbx/animal_sounds/wolf.mp3'
+  );
+
+  const arrayBuffer = await response.arrayBuffer();
+  wolfBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+}
+
+function redirectFromEdge() {
+  const safeX = THREE.MathUtils.clamp(
+    wolf.position.x,
+    GROUND_MIN_X + EDGE_MARGIN,
+    GROUND_MAX_X - EDGE_MARGIN
+  );
+
+  const safeZ = THREE.MathUtils.clamp(
+    wolf.position.z,
+    GROUND_MIN_Z + EDGE_MARGIN,
+    GROUND_MAX_Z - EDGE_MARGIN
+  );
+
+  clickTarget.set(
+    safeX + (Math.random() - 0.5) * 6,
+    0,
+    safeZ + (Math.random() - 0.5) * 6
+  );
+
+  hastarget = true;
+}
+
 function animate() {
   const dt = clock.getDelta();
   const t = clock.elapsedTime * runMultiplier;
+  const nearEdge =
+  wolf.position.x < GROUND_MIN_X + EDGE_MARGIN ||
+  wolf.position.x > GROUND_MAX_X - EDGE_MARGIN ||
+  wolf.position.z < GROUND_MIN_Z + EDGE_MARGIN ||
+  wolf.position.z > GROUND_MAX_Z - EDGE_MARGIN;
+
+  if (nearEdge) {
+    redirectFromEdge();
+  }
 
   // Patrol
   patrolX += dt * baseSpeed * runMultiplier;
   wolf.position.x = Math.sin(patrolX * 0.6) * 1.2;
+  if (!hastarget){
   wolf.rotation.y = Math.sin(patrolX * 0.32) * 0.06;
-
-  // gait
+  }
+  // Legs
   const gait = 5.8 * runMultiplier;
   const phases = [
     Math.sin(t * gait + 0),
@@ -347,10 +489,14 @@ function animate() {
   ];
   legs.forEach((l, i) => {
     const ph = phases[i];
-    // apply base pose offsets so legs look bent even at rest
-    l.legGroup.rotation.x = (0.18 * ph) + (i < 2 ? -0.06 : 0.04);
-    l.lowerGroup.rotation.x = Math.max(-0.75, -0.26 * ph) + (i < 2 ? -0.05 : -0.02);
-    l.paw.rotation.x = Math.max(-0.28, -0.12 * ph);
+    // movimento para frente / trás (andar)
+    l.legGroup.rotation.z = (0.28 * ph) + (i < 2 ? -0.10 : 0.10);
+
+    // dobra do joelho
+    l.lowerGroup.rotation.z = Math.max(-0.85, -0.35 * ph);
+
+    // pequena inclinação da pata
+    l.paw.rotation.z = Math.max(-0.35, -0.18 * ph);
   });
 
   // head subtle
@@ -370,6 +516,46 @@ function animate() {
   // torso micro-movement
   chest.rotation.x = Math.sin(t * 1.2) * 0.006 * runMultiplier;
   rear.rotation.x = Math.sin(t * 1.2) * 0.004 * runMultiplier;
+
+  if (hastarget) {
+    const dir = new THREE.Vector3().subVectors(clickTarget, wolf.position);
+
+    dir.y = 0; // keep only horizontal direction
+
+    const dist = dir.length();
+
+    if (dist > 0.15) {
+      dir.normalize();
+
+      const targetAngle = Math.atan2(dir.x, dir.z);
+
+      wolf.rotation.y = THREE.MathUtils.lerp( wolf.rotation.y, targetAngle, 0.12 );
+    }
+
+    //old movement code
+    /*
+    wolf.position.add(
+    new THREE.Vector3(
+      Math.sin(wolf.rotation.y),
+      0,
+      Math.cos(wolf.rotation.y)
+    ).multiplyScalar(dt * 0.6 * runMultiplier)
+    );*/
+
+    wolf.position.add(dir.clone().multiplyScalar(dt * 0.6 * runMultiplier));
+
+      wolf.position.x = THREE.MathUtils.clamp(
+      wolf.position.x,
+      GROUND_MIN_X,
+      GROUND_MAX_X
+    );
+
+    wolf.position.z = THREE.MathUtils.clamp(
+      wolf.position.z,
+      GROUND_MIN_Z,
+      GROUND_MAX_Z
+    );
+  }
 
   controls.update();
   renderer.render(scene, camera);
