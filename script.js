@@ -1,6 +1,8 @@
 //old import
-//import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js';
-//import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/controls/OrbitControls.js';
+/*import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js';
+import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/controls/OrbitControls.js';
+*/
+//new import
 import * as THREE from 'three';
 // ORBIT CONTROLS utility (enable moving camera with mouse)
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
