@@ -61,14 +61,14 @@ Este projeto explora conceitos de **modelação procedural**, **animação hier�
 ---
 
 ## 📁 Estrutura do Projeto
-
+```
 /project
 │
 ├── index.html
 ├── script.js
 ├── README.md
 └── style.css
-
+```
 ---
 
 ⚠️ O áudio só funciona corretamente via servidor (não abrir o HTML diretamente).
